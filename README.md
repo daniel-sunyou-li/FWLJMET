@@ -8,10 +8,13 @@ There are four different data taking periods that will be processed separately: 
 ## Setting-up `LJMet`  
 It is recommended to run `LJMet` on the LPC, which requires having completed [the instructions here](https://uscms.org/uscms_at_work/computing/getstarted/uaf.shtml). For the following instructions, replace [###] with the appropriate user-specific variables.
 
+### _Important Note_
+These instructions have since been updated from working on cmslpc-sl7 (now retired) to cmslpc-el9 (AlmaLinux9). As a result, the code must be run in an SL7 singularity on the EL9 server. 
+
 __Signing in to FNAL LPC:__	
 
 	kinit -f [username]@FNAL.GOV
-	ssh [username]@cmslpc-sl7.fnal.gov
+	ssh [username]@cmslpc-el9.fnal.gov
 
 __Retrieving the `CMSSW` environment:__  
 Note that if you are running a `bash` environment, the postfix should be `.sh` rather than `.csh` for `tcsh`. Also, `setenv [alias] [name]` in `tcsh` should be `export [alias]=[name]` in `bash`.
@@ -20,20 +23,22 @@ For `tcsh`:
 	
 	cd ~/nobackup
 	source /cvmfs/cms.cern.ch/cmsset_default.csh
-	setenv SCRAM_ARCH slc7_amd64_gcc700
-	cmsrel CMSSW_10_6_29
-	cd CMSSW_10_6_29/src/
-	cmsenv
+ 	cmssw-el7 -p --bind /uscms/homes/d/dsunyou --bind /uscms_data/d3/dsunyou --bind /uscms_data --bind /cvmfs -- /bin/bash -l # setup the apptainer
 
 For `bash`:
 	
 	cd ~/nobackup
 	source /cvmfs/cms.cern.ch/cmsset_default.sh
-	export SCRAM_ARCH=slc7_amd64_gcc700
+ 	cmssw-el7 -p --bind /uscms/homes/d/dsunyou --bind /uscms_data/d3/dsunyou --bind /uscms_data --bind /cvmfs -- /bin/bash -l
+
+ Install the `CMSSW_10_6_29` environment:
+
+	source /cvmfs/cms.cern.ch/cmsset_default.sh
+ 	export SCRAM_ARCH=slc7_amd64_gcc700
 	cmsrel CMSSW_10_6_29
 	cd CMSSW_10_6_29/src/
-	cmsenv
-	
+	cmsenv 	
+
 The following instructions are all assumed to be referencing the `src` directory in `CMSSW_10_6_29` which can be reached using the command `cd ${CMSSW_BASE}/src/` after running the `cmsenv` environment once.
 	
 __Redo the [MET filters](https://twiki.cern.ch/twiki/bin/viewauth/CMS/MissingETOptionalFiltersRun2):__
@@ -44,7 +49,7 @@ __[HOT (Resolved top) Tagger](https://github.com/susy2015/TopTagger/tree/master/
 
 	git clone https://github.com/susy2015/TopTagger.git
 	
-To make `TopTagger` compatible with `CMSSW_10_6_29`, you must manually edit (i.e. using 'vim') the following file: `/TopTagger/DataFormats/BuildFile.xml` with the following:
+To make `TopTagger` compatible with `CMSSW_10_6_29`, you must manually edit (i.e. using `vi`, the apptainer does not currently support any other editors) the following file: `/TopTagger/DataFormats/BuildFile.xml` with the following:
 * Add `<use name="clhep"/>`
 * Add `<use name="root"/>`
 	
@@ -54,14 +59,18 @@ __Adding `Axis1` information for `RecoJets`:__
 
 The old instruction for adding Axis1 information "git cms-merge-topic -u pastika:AddAxis1_1026" doesn't work for `CMSSW_10_6_29`, please do the following steps by hand:
 * Replace `RecoJets/JetProducers/plugins/QGTagger.cc` with [this version](https://github.com/jingyuluo/QG_SA/blob/master/QGTagger.cc)
-	* Instructions using 'vim':
-		1. Open `QGTagger.cc` with 'vim': `vim RecoJets/JetProducers/plugins/QGTagger.cc`
+	* Instructions using `vi`:
+		1. Open `QGTagger.cc`: `vi RecoJets/JetProducers/plugins/QGTagger.cc`
 		2. Delete all contents: `dG`
 		3. Set 'paste' mode: `:set paste`
 		4. Set 'insert' mode: `i`
 		5. Copy new `QGTagger.cc` contents into empty file using 'copy+paste'
 		6. Exit 'insert' mode: `esc` key
 		7. Save and exit: `:wq`
+  	* Instructions using `wget`:
+		1. `cd RecoJets/JetProducers/plugins/QGTagger.cc`
+  		2. `rm QGTagger.cc`
+  	 	3. `wget https://raw.githubusercontent.com/jingyuluo/QG_SA/master/QGTagger.cc`  
 * Update `RecoJets/JetProducers/interface/QGTagger.h` by replacing L24: `std::tuple<int, float, float> calcVariables` with `std::tuple<int, float, float, float> calcVariables`
 
 __Adding `EGammaPostRecoTools` and `ElectronTools` for [Electron MVA ID](https://twiki.cern.ch/twiki/bin/view/CMS/EgammaMiniAODV2):__
@@ -72,12 +81,14 @@ __Adding `EGammaPostRecoTools` and `ElectronTools` for [Electron MVA ID](https:/
 	git clone -b ULSSfiles_correctScaleSysMC https://github.com/jainshilpi/EgammaAnalysis-ElectronTools.git EgammaAnalysis/ElectronTools/data/
 	git cms-addpkg EgammaAnalysis/ElectronTools
 
-__Adding `BestCalc`:__  
-Copy `lwtnn` for `BestCalc.cc` to compile:
+The EGamma group no longer supports Run 2 out-of-the-box, so the Run 3 IDs must be commented out in `EgammaPostRecoTools.py` for [electrons]([url](https://github.com/cms-egamma/EgammaPostRecoTools/blob/master/python/EgammaPostRecoTools.py#L46-L48)) and [photons]([url](https://github.com/cms-egamma/EgammaPostRecoTools/blob/master/python/EgammaPostRecoTools.py#L54-L55)).
 
-	cp -r ~jmanagan/nobackup/CMSSW_9_4_12/src/lwtnn .
+__Adding `BestCalc`:__  
+Exit the apptainer, and then copy `lwtnn` for `BestCalc.cc` to compile:
+
+	cp -r ~dsunyou/CMSSW_10_6_29/src/lwtnn .
 	
-If not running on the LPC, use `scp` instead. 
+If not running on the LPC, use `scp` instead. Reinitialize the apptainer and be sure to setup the environment with the typical `source` commands and `cmsenv` before continuing. 
 
 For more information about `BestCalc`, or BoostedEventShapeTagger (BEST):
 * https://bregnery.github.io/docs/BESTstandaloneTutorial/
@@ -87,7 +98,7 @@ For more information about `BestCalc`, or BoostedEventShapeTagger (BEST):
 __Checking out FWLJMET from Github:__  
 Finally, we can download the `FWLJMET` code base after setting up all the necessary dependencies:
 
-	git clone -b 10_6_29_UL https://github.com/cms-ljmet/FWLJMET.git
+	git clone -b 10_6_29_UL https://github.com/daniel-sunyou-li/FWLJMET.git
 	cd FWLJMET
 
 __Add `PUPPI` Mass Corrections to `FWLJMET/LJMet/data/` for `JetSubCalc`:__  
